@@ -26,6 +26,7 @@
 """Test the CMX 3600 EDL adapter."""
 
 # python
+import shutil
 import os
 import unittest
 
@@ -51,6 +52,8 @@ DISSOLVE_TEST = os.path.join(SAMPLE_DATA_DIR, "dissolve_test.edl")
 DISSOLVE_TEST_2 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_2.edl")
 DISSOLVE_TEST_3 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_3.edl")
 DISSOLVE_TEST_4 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_4.edl")
+DISSOLVE_TEST_5 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_5.otio")
+DISSOLVE_TEST_6 = os.path.join(SAMPLE_DATA_DIR, "dissolve_test_6.edl")
 GAP_TEST = os.path.join(SAMPLE_DATA_DIR, "gap_test.edl")
 WIPE_TEST = os.path.join(SAMPLE_DATA_DIR, "wipe_test.edl")
 TIMECODE_MISMATCH_TEST = os.path.join(SAMPLE_DATA_DIR, "timecode_mismatch.edl")
@@ -65,6 +68,13 @@ TRANSITION_DURATION_TEST = os.path.join(SAMPLE_DATA_DIR, "transition_duration.ed
 
 class EDLAdapterTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
     maxDiff = None
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
 
     def test_edl_read(self):
         edl_path = SCREENING_EXAMPLE_PATH
@@ -1067,6 +1077,37 @@ V     C        00:00:00:00 00:00:00:05 00:00:00:00 00:00:00:05
         self.assertEqual(tl.tracks[0][5].duration().value, 52.0)
         self.assertEqual(tl.tracks[0][6].duration().value, 96.0)
         self.assertEqual(tl.tracks[0][7].duration().value, 135.0)
+
+    def test_five_part_transition_avid_roundtrip(self):
+        """
+        Test import->export->import of five part transition
+        """
+
+        # Test with five-part
+        tl = otio.adapters.read_from_file(DISSOLVE_TEST_5)
+        self.assertEqual(len(tl.tracks[0]), 12)
+
+        otio_str = otio.adapters.write_to_string(tl, adapter_name="cmx_3600")
+        tl2 = otio.adapters.read_from_string(otio_str, adapter_name="cmx_3600")
+        self.assertEqual(len(tl2.tracks[0]), 12)
+
+        out_path = os.path.join(self.test_dir, "test.edl")
+        otio.adapters.write_to_file(tl, out_path, adapter_name="cmx_3600")
+        otio.adapters.write_to_file(tl, "/Users/jburnell/test.otio", adapter_name="cmx_3600")
+
+        tl3 = otio.adapters.read_from_file(out_path, adapter_name="cmx_3600")
+        self.assertEqual(len(tl3.tracks[0]), 12)
+
+    def test_hanging_transition(self):
+        """
+        Test A->B Transition with no ending clip.
+        """
+        tl = otio.adapters.read_from_file(DISSOLVE_TEST_6)
+        self.assertEqual(len(tl.tracks[0]), 3)
+
+        self.assertIsInstance(tl.tracks[0][0], otio.schema.Clip)
+        self.assertIsInstance(tl.tracks[0][1], otio.schema.Transition)
+        self.assertIsInstance(tl.tracks[0][2], otio.schema.Clip)
 
 
 if __name__ == "__main__":
